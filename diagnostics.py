@@ -21,7 +21,7 @@ def main(argv):
                         file(s)')
 
     args = parser.parse_args(argv)
-    
+
     if args.name is None:
         cmd_names = get_files(args.directory, '*cmd')
         sfh_files = get_files(args.directory, '*sfh')
@@ -40,27 +40,26 @@ def main(argv):
         scrns = [s for s in scrns if not 'mcmc' in s]
 
     [check_boundaries(p, s) for p, s in zip(params, scrns)]
-    
+
     try:
         filter1, filter2 = args.filters.split(',')
     except AttributeError:
         filter1 = 'V'
         filter2 = 'I'
-    
+
     labels = ['${\\rm %s}$' % i for i in ('data', 'model', 'diff', 'sig')]
 
     call_pgcmd(cmd_names, filter1, filter2, labels=labels)
 
-    if len(sfh_files) > 0:        
+    if len(sfh_files) > 0:
         for sfh_file in sfh_files:
             msfh = MatchSFH(sfh_file)
             if len(msfh.data) != 0:
                 sfh_plot(msfh)
                 msfh.plot_csfr()
-                plt.close()
-    
+
     [match_diagnostic(params[i], phots[i]) for i in range(len(phots))]
-    
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
