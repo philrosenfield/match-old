@@ -20,12 +20,12 @@ __all__ = ['check_boundaries', 'calcsfh_dict', 'call_match', 'grab_val',
            'match_param_default_dict', 'match_param_fmt', 'process_match_sfh',
            'read_binned_sfh', 'read_match_cmd', 'write_match_bg', 'cheat_fake']
 
- 
+
 def check_boundaries(param, scrn):
     """
     check if the best fit file hits the Av or dmod edge of parameter search
     space.
-    
+
     print information to terminal, nothing is printed if dmod and Av are
     within bounds.
 
@@ -42,7 +42,7 @@ def check_boundaries(param, scrn):
             msg += 'extend boundary lower, %f <= %f\n' % (val, lower)
             retval += 1
         return retval, msg
-    
+
     msg = '{} / {}\n'.format(os.path.split(param)[1], os.path.split(scrn)[1])
     # parse scrn
     bfit = open(scrn).readlines()[-1]
@@ -53,11 +53,11 @@ def check_boundaries(param, scrn):
         av, dmod, _ = bfit.split(',')
         dmod = float(dmod.replace(' dmod=', ''))
         av = float(av.replace('Best fit: Av=', ''))
-    
+
         # parse param
         pars = open(param).readline()
         dmod0, dmod1, ddmod, av0, av1, dav = np.array(pars.split(), dtype=float)
-        
+
         retval, msg = betweenie(dmod, dmod1, dmod0, msg=msg)
         retval, msg = betweenie(av, av1, av0, retval=retval, msg=msg)
 
@@ -65,11 +65,11 @@ def check_boundaries(param, scrn):
         print(msg)
     return
 
-  
+
 def make_matchfake(fname):
     """
     make four-column Vin, Iin, Vdiff, Idiff artificial stars
-    
+
     made to work with pipeline fake.fits files with 3 filters, should work
     for two but not tested
     assumes _F*W_F*W_ etc in the file name label the filters.
@@ -85,13 +85,13 @@ def make_matchfake(fname):
     for i in range(len(filters)-1):
         mag1in_col = 'MAG{}IN'.format(i+1)
         mag2in_col = 'MAG{}IN'.format(len(filters))
-        
+
         if mag1in_col == mag2in_col:
             continue
 
         mag1out_col = 'MAG{}OUT'.format(i+1)
         mag2out_col = 'MAG{}OUT'.format(len(filters))
-        
+
         try:
             mag1in = tbl[mag1in_col]
             mag2in = tbl[mag2in_col]
@@ -106,7 +106,7 @@ def make_matchfake(fname):
                    fmt='%.4f')
         logger.info('wrote {}'.format(fout))
     return
-    
+
 
 def grab_val(s, val, v2=None, v3=None):
     def split_str(s, val):
@@ -194,6 +194,31 @@ def read_binned_sfh(filename):
             data = np.genfromtxt(filename, dtype=dtype, skip_header=6,
                                  skip_footer=2)
     return data.view(np.recarray)
+
+
+def parse_pipeline(filename):
+    '''find target and filters from the filename'''
+    name = os.path.split(filename)[1].upper()
+
+    # filters are assumed to be F???W
+    starts = np.array([m.start() for m in re.finditer('_F', name)])
+    starts += 1
+    if len(starts) == 1:
+        starts = np.append(starts, starts+6)
+    filters = [name[s: s+5] for s in starts]
+
+    # the target name is assumed to be before the filters in the filename
+    pref = name[:starts[0]-1]
+    for t in pref.split('_'):
+        if t == 'IR':
+            continue
+        try:
+            # this could be the proposal ID
+            int(t)
+        except:
+            # a mix of str and int should be the target
+            target = t
+    return target, filters
 
 
 class MatchSFH(object):
@@ -351,7 +376,7 @@ class MatchSFH(object):
         if ylabel is not None:
             ax.set_ylabel(ylabel, fontsize=20)
         return ax
-        
+
     def plot_csfr(self, ax=None, errors=True, plt_kw={}, fill_between_kw={},
                   xlim=(13.4, -0.01), ylim=(-0.01, 1.01)):
         '''cumulative sfr plot from match'''
@@ -360,16 +385,16 @@ class MatchSFH(object):
             fig, ax = plt.subplots(figsize=(8, 6))
             plt.subplots_adjust(right=0.95, left=0.1, bottom=0.11, top=0.95)
             one_off = True
-        
+
         fill_between_kw = dict({'alpha': 0.2, 'color': 'gray'}.items() \
                                + fill_between_kw.items())
-        
+
         plt_kw = dict({'lw': 3}.items() + plt_kw.items())
-        
+
         lages, (csfh, csfh_errm, csfh_errp) = self.plot_bins(val='csfr',
                                                              err=True)
         age = 10 ** (lages - 9.)
-        
+
         age = np.append(age, age[-1])
         csfh = np.append(csfh, 0)
         csfh_errm = np.append(csfh_errm, 0)
@@ -378,12 +403,12 @@ class MatchSFH(object):
         if errors:
             ax.fill_between(age, csfh - csfh_errm, csfh + csfh_errp,
                             **fill_between_kw)
-        
+
         ax.plot(age, csfh, **plt_kw)
-    
+
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
-    
+
         if one_off:
             ax.set_xlabel('$\\rm{Time\ (Gyr)}$', fontsize=20)
             ax.set_ylabel('$\\rm{Culmulative\ SF}$', fontsize=20)
@@ -396,6 +421,46 @@ class MatchSFH(object):
             print('wrote {}'.format(outfile))
         return ax
 
+    def param_table(self, angst=True, agesplit=[1., 3.], target='',
+                    filters=['',''], printheader=False):
+        if printheader:
+            print(r'Galaxy & Optical Filters & A$_V$ & $(m\!-\!M)_0$ &'
+                  r'$\frac{{\rm{{SFR}}}}{{\rm{{SFR_{{TOT}}}}}}$ &'
+                  r'$\langle \mbox{{[Fe/H]}} \rangle$ &'
+                  r'$\frac{{\rm{{SFR}}}}{{\rm{{SFR_{{TOT}}}}}}$ &'
+                  r'$\langle \mbox{{[Fe/H]}} \rangle$ & $bestfit$ \\ & & & & '
+                  r'$<{0}\rm{{Gyr}}$ & $<{0}\rm{{Gyr}}$ & ${0}-{1}\rm{{Gyr}}$'
+                  r' & ${0}-{1}\rm{{Gyr}}$ & \\ \hline'.format(*agesplit))
+
+        d = {'bestfit': self.bestfit, 'Av': self.Av, 'dmod': self.dmod}
+        if angst:
+            d['target'], filters = parse_pipeline(self.name)
+        else:
+            d['target'] = target
+
+        d['filters'] = ','.join(filters)
+
+        iyoung = np.argmin(abs(agesplit[0] - 10 **(self.data.lagef - 8)))
+        iinter = np.argmin(abs(agesplit[1] - 10 **(self.data.lagef - 8)))
+
+        sf = sfh.data['sfr'] * \
+            (10 ** self.data['lagef'] - 10 ** self.data['lagei'])
+        fcsf = np.cumsum(sf)/np.sum(sf)
+
+        d['fyoung'] = fcsf[iyoung]
+        d['finter'] = fcsf[iinter] - fyoung
+
+        iyoungs, = np.nonzero(self.data.mh[:iyoung + 1] != 0)
+        iinters, = np.nonzero(self.data.mh[:iinter + 1] != 0)
+        iinters = list(set(iinters) - set(iyoungs))
+
+        d['feh_young'] = convertz(z=0.02 * 10 ** np.mean(sfh.data.mh[iyoungs]))[-2]
+        d['feh_inter'] = convertz(z=0.02 * 10 ** np.mean(sfh.data.mh[iinters]))[-2]
+
+        fmt = ' & '.join(['{target}', '{filters}', '{Av: .2f}', '{dmod: .2f}', '{fyoung: .2f}',
+                        '{feh_young: .2f}', '{finter: .2f}', '{feh_inter: .2f}', '{bestfit: .1f}'])
+        print(fmt.format(**d))
+        return d
 
 def match_param_default_dict():
     ''' default params for match param file'''

@@ -146,7 +146,7 @@ def run_grid(phot, fake, mparams, gmin=-1., gmax=-.4, dg=0.05, zdisp=0.05,
 
 def setz_results(fname='setz_results.dat'):
     import matplotlib.pylab as plt
-    from brewer2mpl import sequential
+    from palettable import sequential
     from ResolvedStellarPops.match.match_grid import MatchGrid
 
     def cov_plot():
