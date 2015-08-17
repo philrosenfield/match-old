@@ -399,6 +399,7 @@ class MatchSFH(object):
 
 def match_param_default_dict():
     ''' default params for match param file'''
+
     dd = {'ddmod': 0.05,
           'dav': 0.05,
           'logzmin': -2.3,
@@ -419,7 +420,13 @@ def match_param_default_dict():
           'exclude_gates': '',
           'ninclude_gates': 0,
           'include_gates': ''}
+
+    therest = ['imf', 'dmod1', 'dmod2', 'av1', 'av2', 'V-Imin', 'V-Imax', 'V',
+               'I', 'Vmin', 'Vmax', 'Imin', 'Imax']
+    for key in therest:
+        dd[key] = np.nan
     return dd
+
 
 
 def match_param_fmt(set_z=False, zinc=True):

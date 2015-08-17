@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 import argparse
-import matplotlib as mpl
-
 import matplotlib.pylab as plt
 import numpy as np
 import os
@@ -10,18 +8,19 @@ import time
 
 import ResolvedStellarPops as rsp
 from astropy.io import fits
-from ResolvedStellarPops.tpagb_path_config import tpagb_path
-from ResolvedStellarPops.match.utils import match_diagnostic
-    
+from astropy.table import Table
+
+from .diagnostics import match_diagnostic
+from .utils import match_param_default_dict, match_param_fmt
+
 def move_on(ok, msg='0 to move on: '):
     ok = int(raw_input(msg))
     time.sleep(1)
     return ok
 
-def exclude_tpagb(phot, param):
+def exclude_tpagb(phot, param, mtrgb=None, filter1=None):
     from scipy.interpolate import interp1d
     atab = rsp.angst_tables.angst_data
-    target, filter1, filter2 = param.upper().split('.')[0].split('_')
     
     lines = open(param, 'r').readlines()
     dmag, dcol, _, colmin, colmax = map(float, lines[4].split()[:-1])
@@ -32,8 +31,13 @@ def exclude_tpagb(phot, param):
     mag1, mag2 = np.loadtxt(phot, unpack=True)
     # choose color cut
     mincol = find_match_limits(mag1, mag2, color_only=True)[0]
-    mtrgb, dmod, av = atab.get_tab5_trgb_av_dmod(target, filters=[filter1,
-                                                                  filter2])
+
+    if mtrgb is None:
+        target, f1, filter2 = param.upper().split('.')[0].split('_')
+        if filter1 is None:
+            filter1 = f1
+        mtrgb = atab.get_tab5_trgb_av_dmod(target, filters=[filter1, filter2])[0]
+
     xarr, yarr = put_a_line_on_it(mtrgb, consty=False, filter1=filter1)
     f = interp1d(xarr, yarr)
     faintlim1 = f(mincol)
@@ -52,7 +56,6 @@ def exclude_tpagb(phot, param):
     with open(param, 'w') as outp:
         [outp.write(l) for l in lines]
     print('wrote %s' % param)
-    match_diagnostic(param, phot)
     
 def put_a_line_on_it(val, npts=100, consty=True, ax=None,
                      ls='--', annotate=True, filter1=None,
@@ -107,9 +110,11 @@ def find_match_limits(mag1, mag2, comp1=90., comp2=90., color_only=False,
 
     ok = 1
     while ok == 1:
-        print 'click on color min then color max'
+        print 'click color extrema'
         pts = plt.ginput(2, timeout=-1)
         colmin, colmax = [pts[i][0] for i in range(2)]
+        if colmin > colmax:
+            colmin, colmax = colmax, colmin
         ax.vlines(colmin, *ax.get_ylim())
         ax.vlines(colmax, *ax.get_ylim())
         plt.draw()
@@ -124,17 +129,24 @@ def find_match_limits(mag1, mag2, comp1=90., comp2=90., color_only=False,
         ax.plot(mag1, mag2, '.', color='k')
         ok = 1
         while ok == 1:
-            print 'click the bright mag value of mag1 and mag2, click a second time to finish'
+            print 'click mag extrema'
             pts = plt.ginput(2, timeout=-1)
             mag1max, mag2max = pts[0]
+            mag1min, mag2min = pts[1]
+            if mag1min > mag1max:
+                mag1min, mag1max = mag1max, mag1min
+            if mag2min > mag2max:
+                mag2min, mag2max = mag2max, mag2min
+
             ax.plot(mag1max, mag2max, 'o', color='r')
+            ax.plot(mag1min, mag2min, 'o', color='r')
             plt.draw()
             ok = move_on(ok)
 
         plt.close()
 
-        inds, = np.nonzero((mag1 < comp1) & (mag1 > mag1max) &
-                           (mag2 < comp2) & (mag2 > mag2max) &
+        inds, = np.nonzero((mag1 < mag1min) & (mag1 > mag1max) &
+                           (mag2 < mag2min) & (mag2 > mag2max) &
                            (col < colmax) & (col > colmin))
 
     fig, ax = plt.subplots()
@@ -147,7 +159,7 @@ def find_match_limits(mag1, mag2, comp1=90., comp2=90., color_only=False,
     ax.vlines(colmax, *ax.get_ylim(), lw=2)
     if not color_only:
         ax.hlines(mag2max, *ax.get_xlim(), lw=2)
-        data = (colmin, colmax, mag1min, mag1max, mag2max)
+        data = (colmin, colmax, mag1min, mag1max, mag2min, mag2max)
     
     plt.draw()
     
@@ -186,10 +198,20 @@ def find_gates(mag1, mag2, param):
     with open(param, 'w') as outp:
         [outp.write(l) for l in lines]
     print('wrote %s' % param)
+
+
+def match_param(mag1, mag2, filters, phot, param_kw={}):
+    print filters
+    p = dict(match_param_default_dict().items() + param_kw.items())
     
-    os.chdir(here)
-
-
+    p['V-Imin'], p['V-Imax'], p['Vmin'], p['Vmax'], p['Imin'], p['Imax'] = \
+        find_match_limits(mag1, mag2)
+    p['V'] = filters[0]
+    p['I'] = filters[1]
+    param = phot.replace('match', 'param')
+    with open(param, 'w') as out:
+        out.write(match_param_fmt() % p)
+    return param
 
 def match_limits(mag1, mag2, color_only=False, comp1=99., comp2=99.):
     plt.ion()
@@ -208,9 +230,27 @@ def match_limits(mag1, mag2, color_only=False, comp1=99., comp2=99.):
         colmin, colmax, mag1max, mag2max = data
         data_str = '%.2f %.2f %.2f %.2f' % (colmin, colmax, mag1max, mag2max)
     
-
     print data_str
 
+
+def make_phot(fitsfile, filters):
+    assert len(filters) > 0, 'need filters'
+    
+    tab = Table.read(fitsfile)
+    
+    test = [f in tab.colnames for f in filters]
+    if False in test:
+        print(tab.colnames)
+        sys.exit()
+    else:
+        pref, ext = fitsfile.split('.')[0], '.'.join(fitsfile.split('.')[1:])
+        ext = '.{}'.format(ext.replace('.fits', ''))
+        photname = '{0}_{1}_{2}{3}.match'.format(pref, filters[0], filters[1], ext)
+        photname = photname.replace('_VEGA', '')
+        np.savetxt(photname, np.column_stack((tab[filters[0]], tab[filters[1]])),
+                   fmt='%.3f')
+    return photname
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find color mag limits of CMDs interactively")
@@ -218,45 +258,49 @@ if __name__ == "__main__":
     parser.add_argument('-c', '--color_only', action='store_true',
                         help='skip the magnitude finding')
 
+    parser.add_argument('-s', '--slice', type=float, default=99.,
+                        help='cut out mags outside of this value')
+
+    parser.add_argument('-m', '--mtrgb', type=float, default=None,
+                        help='trgb level to run with -t')
+
     parser.add_argument('-e', '--exgates', action='store_true',
                         help='Find exclude gates instead')
      
     parser.add_argument('-t', '--extpgates', action='store_true',
                         help='Find exclude tp-agb instead')
 
-    parser.add_argument('-p', '--param', type=str, help='match param file')
+    parser.add_argument('-i', '--interactive', action='store_true',
+                        help='find limits interactively')
 
-    parser.add_argument('phot', type=str, help='match phot file')
+    parser.add_argument('-f', '--filters', type=str, default=None,
+                        help='comma separated filters to make match phot')
+
+    parser.add_argument('param', type=str, help='match param file')
+
+    parser.add_argument('phot', type=str, help='match phot file or fits file')
     
     args = parser.parse_args(sys.argv[1:])
     
+    if args.filters is not None:
+        filters = args.filters.split(',')
+        args.phot = make_phot(args.phot, filters)
+
     mag1, mag2 = np.loadtxt(args.phot, unpack=True)
-    
+    inds, = np.nonzero((np.abs(mag1) < args.slice) & (np.abs(mag2) < args.slice))
+    mag1 = mag1[inds]
+    mag2 = mag2[inds]
+                
     if args.exgates:
-        find_gates(mag1, mag2)
-    #elif args.interactive:
-    #    print 'NOT WORKING!'
-    #    param = match_limits(mag1, mag2, color_only=args.color_only)
-    #    match_diagnostic(param, args.phot)
-    elif args.extpgates:
-        exclude_tpagb(args.phot, args.param)
-    else:
-        magcolor([args.phot])
+        find_gates(mag1, mag2, args.param)
     
-        
-def magcolor(phots):
-    fmt="""0.10 0.05 5 {cmin} {cmax} {filter1},{filter2}
-{m1min} {m1max} {filter1}
-{m2min} {m2max} {filter2}"""
-    d = {}
-    for m in phots:
-        m1, m2 = np.loadtxt(m, unpack=True)
-        d['filter1'], d['filter2'] = rsp.asts.parse_pipeline(m)[1]
-        d['m1min'], d['m1max'] = m1.min(), m1.max()
-        d['m2min'], d['m2max'] = m2.min(), m2.max()
-        color = m1-m2
-        d['cmin'], d['cmax'] = color.min(), color.max()
-        print m
-        print fmt.format(**d)
-        print ''
+    if args.interactive:
+        filters = args.filters.replace('_VEGA','').split(',')
+        args.param = match_param(mag1, mag2, filters, args.phot)
+    
+    if args.extpgates:
+        filter1 = args.filters.replace('_VEGA','').split(',')[0]
+        exclude_tpagb(args.phot, args.param, filter1=filter1, mtrgb=args.mtrgb)
+    
+    match_diagnostic(args.param, args.phot)
         

@@ -57,7 +57,6 @@ def main(argv):
             if len(msfh.data) != 0:
                 sfh_plot(msfh)
                 msfh.plot_csfr()
-                plt.close()
     
     [match_diagnostic(params[i], phots[i]) for i in range(len(phots))]
     
