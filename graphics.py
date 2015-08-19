@@ -23,6 +23,8 @@ def match_diagnostic(param, phot):
     from match photometery and cmd parameter space from the match param drawn
     """
     #mc = 0
+    moff = 0.1
+    off = 0.1
     mag1, mag2 = np.loadtxt(phot, unpack=True)
     color = mag1 - mag2
 
@@ -32,6 +34,9 @@ def match_diagnostic(param, phot):
     colmin, colmax = map(float, paramlines[4].split()[3: 5])
     mag1max, mag1min = map(float, paramlines[5].split()[0: 2])
     mag2max, mag2min = map(float, paramlines[6].split()[0: 2])
+
+    ylims = [(mag1min + moff, mag1max - moff), (mag2min + moff, mag2max - moff)]
+
     filters = paramlines[4].split()[-1].split(',')
     excludes = np.array([paramlines[7].split()], dtype=float)
 
@@ -56,14 +61,13 @@ def match_diagnostic(param, phot):
         axs[i].plot(verts[i][:, 0], verts[i][:, 1])
         axs[i].set_ylabel(r'${}$'.format(filters[i]))
         axs[i].set_xlabel(r'${}-{}$'.format(*filters))
+        axs[i].set_ylim(ylims[i])
+        axs[i].set_xlim(colmin - off, colmax + off)
     if nregions > 0:
         axs[0].plot(exgverts[:, 0] , exgverts[:, 1])
         # mag2 = mag1 - color
         axs[1].plot(exgverts[:, 0] , exgverts[:, 1] - exgverts[:, 0])
     
-    for ax in axs:
-        ax.set_ylim(ax.get_ylim()[::-1])
-
     plt.savefig(param + '.png')
     print('wrote', param + '.png')
     plt.close()

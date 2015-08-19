@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 logger = logging.getLogger()
 
 from ResolvedStellarPops import fileio
+from ResolvedStellarPops.convertz import convertz
 from astropy.table import Table
 #from .. import graphics
 
@@ -422,17 +423,19 @@ class MatchSFH(object):
         return ax
 
     def param_table(self, angst=True, agesplit=[1., 3.], target='',
-                    filters=['',''], printheader=False):
-        if printheader:
-            print(r'Galaxy & Optical Filters & A$_V$ & $(m\!-\!M)_0$ &'
-                  r'$\frac{{\rm{{SFR}}}}{{\rm{{SFR_{{TOT}}}}}}$ &'
-                  r'$\langle \mbox{{[Fe/H]}} \rangle$ &'
-                  r'$\frac{{\rm{{SFR}}}}{{\rm{{SFR_{{TOT}}}}}}$ &'
-                  r'$\langle \mbox{{[Fe/H]}} \rangle$ & $bestfit$ \\ & & & & '
-                  r'$<{0}\rm{{Gyr}}$ & $<{0}\rm{{Gyr}}$ & ${0}-{1}\rm{{Gyr}}$'
-                  r' & ${0}-{1}\rm{{Gyr}}$ & \\ \hline'.format(*agesplit))
-
+                    filters=['','']):
         d = {'bestfit': self.bestfit, 'Av': self.Av, 'dmod': self.dmod}
+
+        d['header'] = \
+            (r'Galaxy & Optical Filters & A$_V$ & $(m\!-\!M)_0$ &'
+             r'$\% \frac{{\rm{{SF}}}}{{\rm{{SF_{{TOT}}}}}}$ &'
+             r'$\langle \mbox{{[Fe/H]}} \rangle$ &'
+             r'$\% \frac{{\rm{{SF}}}}{{\rm{{SF_{{TOT}}}}}}$ &'
+             r'$\langle \mbox{{[Fe/H]}} \rangle$ & $bestfit$ \\ & & & & '
+             r'\multicolumn{{2}}{{c}}{{$<{0}\rm{{Gyr}}$}} & '
+             r'\multicolumn{{2}}{{c}}{{${0}-{1}\rm{{Gyr}}$}} & \\ \hline'
+             '\n'.format(*agesplit))
+
         if angst:
             d['target'], filters = parse_pipeline(self.name)
         else:
@@ -443,27 +446,31 @@ class MatchSFH(object):
         iyoung = np.argmin(abs(agesplit[0] - 10 **(self.data.lagef - 8)))
         iinter = np.argmin(abs(agesplit[1] - 10 **(self.data.lagef - 8)))
 
-        sf = sfh.data['sfr'] * \
+        sf = self.data['sfr'] * \
             (10 ** self.data['lagef'] - 10 ** self.data['lagei'])
         fcsf = np.cumsum(sf)/np.sum(sf)
 
-        d['fyoung'] = fcsf[iyoung]
-        d['finter'] = fcsf[iinter] - fyoung
+        d['fyoung'] = 100 * fcsf[iyoung]
+        d['finter'] = 100 * fcsf[iinter] - fcsf[iyoung]
 
+        # logZ = 0 if there is no SF, that will add error to mean Fe/H
         iyoungs, = np.nonzero(self.data.mh[:iyoung + 1] != 0)
         iinters, = np.nonzero(self.data.mh[:iinter + 1] != 0)
         iinters = list(set(iinters) - set(iyoungs))
 
-        d['feh_young'] = convertz(z=0.02 * 10 ** np.mean(sfh.data.mh[iyoungs]))[-2]
-        d['feh_inter'] = convertz(z=0.02 * 10 ** np.mean(sfh.data.mh[iinters]))[-2]
+        d['feh_young'] = convertz(z=0.02 * 10 ** np.mean(self.data.mh[iyoungs]))[-2]
+        d['feh_inter'] = convertz(z=0.02 * 10 ** np.mean(self.data.mh[iinters]))[-2]
 
-        fmt = ' & '.join(['{target}', '{filters}', '{Av: .2f}', '{dmod: .2f}', '{fyoung: .2f}',
-                        '{feh_young: .2f}', '{finter: .2f}', '{feh_inter: .2f}', '{bestfit: .1f}'])
-        print(fmt.format(**d))
+        line = ['{target}', '{filters}', '{Av: .2f}', '{dmod: .2f}',
+                '{fyoung: .2f}', '{feh_young: .2f}', '{finter: .2f}',
+                '{feh_inter: .2f}', '{bestfit: .1f}']
+
+        d['fmt'] = '%s \\\\ \n' % (' & '.join(line))
         return d
 
 def match_param_default_dict():
     ''' default params for match param file'''
+
     dd = {'ddmod': 0.05,
           'dav': 0.05,
           'logzmin': -2.3,
@@ -484,7 +491,13 @@ def match_param_default_dict():
           'exclude_gates': '',
           'ninclude_gates': 0,
           'include_gates': ''}
+
+    therest = ['imf', 'dmod1', 'dmod2', 'av1', 'av2', 'V-Imin', 'V-Imax', 'V',
+               'I', 'Vmin', 'Vmax', 'Imin', 'Imax']
+    for key in therest:
+        dd[key] = np.nan
     return dd
+
 
 
 def match_param_fmt(set_z=False, zinc=True):
