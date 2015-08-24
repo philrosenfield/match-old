@@ -17,7 +17,7 @@ import sys
 
 import numpy as np
 
-from ..fileio.fileIO import readfile, savetxt
+from .fileio import readfile, savetxt
 from .likelihood import read_match_stats
 from .utils import grab_val
 from . import match_scripts
@@ -135,7 +135,7 @@ def run_grid(phot, fake, mparams, gmin=-1., gmax=-.4, dg=0.05, zdisp=0.05,
         cmd, nproc, stats_file = \
             match_scripts.call_stats(outfile, cmd=cmd, nproc=nproc,
                                      nfp_nonsfr=nfp_nonsfr, max_proc=max_proc)
-    
+
     proc, cmd = match_scripts.reset_proc(nproc, cmd)
     if vary not in flag0:
         flag0 = '%s %s' % (vary, flag0)
@@ -327,7 +327,7 @@ def main(argv):
 
     parser.add_argument('-i', '--imf', action='store_true',
                         help='set or vary the imf')
-    
+
     parser.add_argument('-k', '--kroupa', action='store_true',
                         help='set imf to kroupa')
 
@@ -336,7 +336,7 @@ def main(argv):
 
     parser.add_argument('-m', '--mcmc', action='store_true',
                         help='do MCMC run')
-    
+
     parser.add_argument('-b', '--bestfits', type=str, default=None,
                         help='Best fit file to use with -r flag')
 
@@ -351,7 +351,7 @@ def main(argv):
 
     parser.add_argument('-o', '--ovrange', type=str, default='0.3,0.75,0.05',
                         help='core overshoot range. Must to correspond with MATCH sub directories')
-    
+
     parser.add_argument('matchparam', type=str,
                         help='match input file template')
 
@@ -407,4 +407,3 @@ def main(argv):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
-

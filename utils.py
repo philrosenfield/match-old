@@ -4,14 +4,13 @@ import os
 import re
 import sys
 
-
 import numpy as np
 import matplotlib.pyplot as plt
 
 logger = logging.getLogger()
 
-from ResolvedStellarPops import fileio
-from ResolvedStellarPops.convertz import convertz
+from .fileio import input_parameters
+from .utils import convertz
 from astropy.table import Table
 #from .. import graphics
 
@@ -19,8 +18,76 @@ from astropy.table import Table
 __all__ = ['check_boundaries', 'calcsfh_dict', 'call_match', 'grab_val',
            'check_for_bg_file', 'make_calcsfh_param_file', 'strip_header',
            'match_param_default_dict', 'match_param_fmt', 'process_match_sfh',
-           'read_binned_sfh', 'read_match_cmd', 'write_match_bg', 'cheat_fake']
+           'read_binned_sfh', 'read_match_cmd', 'write_match_bg', 'cheat_fake',
+           'parse_pipeline', 'convertz']
 
+def convertz(z=None, oh=None, mh=None, feh=None, oh_sun=8.76, z_sun=0.01524,
+             y0=.2485, dy_dz=1.80):
+    '''
+    input:
+    metallicity as z
+    [O/H] as oh
+    [M/H] as mh
+    [Fe/H] as feh
+
+    initial args can be oh_sun, z_sun, y0, and dy_dz
+
+    returns oh, z, y, x, feh, mh where y = He and X = H mass fractions
+    '''
+
+    if oh is not None:
+        feh = oh - oh_sun
+        z = z_sun * 10 **(feh)
+
+    if mh is not None:
+        z = (1 - y0) / ((10**(-1. * mh) / 0.0207) + (1. + dy_dz))
+
+    if z is not None:
+        feh = np.log10(z / z_sun)
+
+    if feh is not None:
+        z = z_sun * 10**feh
+
+    oh = feh + oh_sun
+    y = y0 + dy_dz * z
+    x = 1. - z - y
+    if mh is None:
+        mh = np.log10((z / x) / 0.0207)
+
+    if __name__ == "__main__":
+        print('''
+                 [O/H] = %2f
+                 z = %.4f
+                 y = %.4f
+                 x = %.4f
+                 [Fe/H] = %.4f
+                 [M/H] = %.4f''' % (oh, z, y, x, feh, mh))
+    return oh, z, y, x, feh, mh
+
+
+def parse_pipeline(filename):
+    '''find target and filters from the filename'''
+    name = os.path.split(filename)[1].upper()
+
+    # filters are assumed to be F???W
+    starts = np.array([m.start() for m in re.finditer('_F', name)])
+    starts += 1
+    if len(starts) == 1:
+        starts = np.append(starts, starts+6)
+    filters = [name[s: s+5] for s in starts]
+
+    # the target name is assumed to be before the filters in the filename
+    pref = name[:starts[0]-1]
+    for t in pref.split('_'):
+        if t == 'IR':
+            continue
+        try:
+            # this could be the proposal ID
+            int(t)
+        except:
+            # a mix of str and int should be the target
+            target = t
+    return target, filters
 
 def check_boundaries(param, scrn):
     """
@@ -195,31 +262,6 @@ def read_binned_sfh(filename):
             data = np.genfromtxt(filename, dtype=dtype, skip_header=6,
                                  skip_footer=2)
     return data.view(np.recarray)
-
-
-def parse_pipeline(filename):
-    '''find target and filters from the filename'''
-    name = os.path.split(filename)[1].upper()
-
-    # filters are assumed to be F???W
-    starts = np.array([m.start() for m in re.finditer('_F', name)])
-    starts += 1
-    if len(starts) == 1:
-        starts = np.append(starts, starts+6)
-    filters = [name[s: s+5] for s in starts]
-
-    # the target name is assumed to be before the filters in the filename
-    pref = name[:starts[0]-1]
-    for t in pref.split('_'):
-        if t == 'IR':
-            continue
-        try:
-            # this could be the proposal ID
-            int(t)
-        except:
-            # a mix of str and int should be the target
-            target = t
-    return target, filters
 
 
 class MatchSFH(object):
@@ -639,82 +681,6 @@ def read_match_cmd(filename):
     return cmd
 
 
-def check_for_bg_file(param):
-    '''
-    the bg.dat file in the calcsfh parameter file can only be 79 chars long.
-    this will check for that. If the length is longer than 78 chars, will
-    rewrite the param file with a local copy, and copy the bg.dat file to
-    current directory.
-
-    Must delete the local dir's bg.dat in another module (if you want to).
-    '''
-    import shutil
-    # read current param file
-    pm = open(param, 'r').readlines()
-
-    # second to last line has bg.dat in it.
-    data = pm[-2].strip().split()[-1]
-    try:
-        float(data)
-        bg_file = 0
-    except:
-        # this needs to be abspath to work.... must get -1 or 1 out of the way
-        bg_file = data[data.index('/'):]
-        # this is only a problem for large filenames.
-        if len(bg_file) <= 78:
-            bg_file = 0
-
-    # overwrite param file to have local copy of bg.dat
-    if bg_file != 0:
-        logger.warning(' % s filename is too long. Copying it locally.' %
-                       bg_file)
-        pm2 = open(param, 'w')
-        for line in pm[:-2]:
-            pm2.write(line)
-        pm2.write('-1 1 -1%s\n' % os.path.split(bg_file)[1])
-        pm2.write(pm[-1])
-        pm2.close()
-        # copy bg.dat here.
-        shutil.copy(bg_file, os.getcwd())
-        bg_file = os.path.split(bg_file)[1]
-    return bg_file
-
-
-def write_match_bg(color, mag2, filename):
-    mag1 = color + mag2
-    assert len(mag1) > 0 and len(mag2) > 0, 'match_bg is empty.'
-    np.savetxt(filename, np.column_stack((mag1, mag2)), fmt='%.4f')
-    print('wrote match_bg as %s' % filename)
-    return
-
-
-def call_match(param, phot, fake, out, msg, flags=['zinc', 'PADUA_AGB'],
-               loud=False):
-    '''
-    wrapper for calcsfh, takes as many flags as you want.
-    '''
-    calcsfh = os.path.join(os.environ['MATCH'], 'calcsfh')
-
-    bg_file = check_for_bg_file(param)
-
-    [fileio.ensure_file(f) for f in (param, phot, fake)]
-
-    cmd = ' '.join((calcsfh, param, phot, fake, out))
-    cmd += ' -' + ' -'.join(flags)
-    cmd += ' > %s' % (msg)
-    cmd = cmd.replace(' - ', '')
-    logger.debug(cmd)
-    if loud is True:
-        print(cmd)
-    err = os.system(cmd)
-    if err != 0:
-        print('PROBLEM WITH %s SKIPPING!' % param)
-        out = -1
-    if bg_file != 0:
-        os.remove(bg_file)
-    return out
-
-
 def calcsfh_dict():
     '''
     default dictionary for calcsfh.
@@ -762,54 +728,6 @@ def calcsfh_dict():
             'match_bg': ''}
 
 
-def make_calcsfh_param_file(pmfile, starpop=None, calcsfh_par_dict=None,
-                            kwargs={}):
-    '''
-    to search over range of av: set Av Av2 dAv as kwargs.
-    to search over range of dmod: set dmod dmod2 ddmod in kwargs
-
-    NOTE:
-    can only handle 1 exclude gate and 1 combine gate.
-    bg.dat has limited number of characters!!
-
-    input:
-    optional: galaxy object to grab attributes from
-
-    kwargs:
-    all parameters can be kwargs, technically, they aren't really kwargs since
-    they aren't optional. Sorry python gods.
-
-    '''
-    calcsfh_pars = fileio.InputFile(default_dict=calcsfh_par_dict)
-    if starpop is not None:
-        gal = starpop
-        # take attributes from galaxy object
-        calcsfh_pars.update_params(gal.__dict__)
-        calcsfh_pars.faint1 = gal.comp50mag1
-        calcsfh_pars.faint2 = gal.comp50mag2
-        calcsfh_pars.colmin = np.min(gal.color)
-        calcsfh_pars.colmax = np.max(gal.color)
-        calcsfh_pars.bright1 = np.min(gal.mag1)
-        calcsfh_pars.bright2 = np.min(gal.mag2)
-
-    # assign kwargs (to overwrite galaxy attributes):
-    calcsfh_pars.add_params(kwargs)
-
-    # if dmod and av range is not set, used fixed.
-    if calcsfh_pars.dmod2 is None:
-        calcsfh_pars.dmod2 = calcsfh_pars.dmod
-
-    if calcsfh_pars.Av2 is None:
-        calcsfh_pars.Av2 = calcsfh_pars.Av
-
-    line = match_param_fmt(calcsfh_pars)
-    #print calcsfh_pars.__dict__
-    pm = open(pmfile, 'w')
-    pm.write(line % calcsfh_pars.__dict__)
-    pm.close()
-    logger.info('%s wrote %s' % (make_calcsfh_param_file.__name__, pmfile))
-    return pmfile
-
 # moved from starpop
 def make_match_param(gal, more_gal_kw=None):
     '''
@@ -830,7 +748,7 @@ def make_match_param(gal, more_gal_kw=None):
     more_gal_kw = more_gal_kw or {}
 
     # load parameters
-    inp = fileio.input_parameters(default_dict=match_param_default_dict())
+    inp = input_parameters(default_dict=match_param_default_dict())
 
     # add parameteres
     cmin = gal.color.min()
@@ -862,3 +780,42 @@ def make_match_param(gal, more_gal_kw=None):
     # write out
     inp.write_params('param.sfh', match_param_fmt())
     return inp
+
+def is_numeric(lit):
+    """
+    value of numeric: literal, string, int, float, hex, binary
+    From http://rosettacode.org/wiki/Determine_if_a_string_is_numeric#Python
+    """
+    # Empty String
+    if len(lit) <= 0:
+        return lit
+    # Handle '0'
+    if lit == '0':
+        return 0
+    # Hex/Binary
+    if len(lit) > 1:  # sometimes just '-' means no data...
+        litneg = lit[1:] if lit[0] == '-' else lit
+        if litneg[0] == '0':
+            if litneg[1] in 'xX':
+                return int(lit, 16)
+            elif litneg[1] in 'bB':
+                return int(lit, 2)
+            else:
+                try:
+                    return int(lit, 8)
+                except ValueError:
+                    pass
+    # Int/Float/Complex
+    try:
+        return int(lit)
+    except ValueError:
+        pass
+    try:
+        return float(lit)
+    except ValueError:
+        pass
+    try:
+        return complex(lit)
+    except ValueError:
+        pass
+    return lit

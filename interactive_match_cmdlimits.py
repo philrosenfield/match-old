@@ -6,7 +6,6 @@ import os
 import sys
 import time
 
-import ResolvedStellarPops as rsp
 from astropy.io import fits
 from astropy.table import Table
 
@@ -21,7 +20,7 @@ def move_on(ok, msg='0 to move on: '):
 def exclude_tpagb(phot, param, mtrgb=None, filter1=None):
     from scipy.interpolate import interp1d
     atab = rsp.angst_tables.angst_data
-    
+
     lines = open(param, 'r').readlines()
     dmag, dcol, _, colmin, colmax = map(float, lines[4].split()[:-1])
     mag1min, mag1max = map(float, lines[5].split()[:-1])
@@ -56,7 +55,7 @@ def exclude_tpagb(phot, param, mtrgb=None, filter1=None):
     with open(param, 'w') as outp:
         [outp.write(l) for l in lines]
     print('wrote %s' % param)
-    
+
 def put_a_line_on_it(val, npts=100, consty=True, ax=None,
                      ls='--', annotate=True, filter1=None,
                      annotate_fmt='$TRGB=%.2f$', xmin=-3, xmax=6,
@@ -104,7 +103,7 @@ def find_match_limits(mag1, mag2, comp1=90., comp2=90., color_only=False,
         ax.set_ylim(ylim)
     else:
         ax.set_ylim(ax.get_ylim()[::-1])
-    
+
     if comp1 < 90.:
         ax.hlines(comp2, *ax.get_xlim())
 
@@ -160,9 +159,9 @@ def find_match_limits(mag1, mag2, comp1=90., comp2=90., color_only=False,
     if not color_only:
         ax.hlines(mag2max, *ax.get_xlim(), lw=2)
         data = (colmin, colmax, mag1min, mag1max, mag2min, mag2max)
-    
+
     plt.draw()
-    
+
     print data
     return data
 
@@ -192,7 +191,7 @@ def find_gates(mag1, mag2, param):
     lines[7] = exclude_gate
     # not so simple ... need them to be parallelograms.
     # PASS!
-    
+
     # write new param file with exclude/include gate
     os.system('mv {0} {0}_bkup'.format(param))
     with open(param, 'w') as outp:
@@ -203,7 +202,7 @@ def find_gates(mag1, mag2, param):
 def match_param(mag1, mag2, filters, phot, param_kw={}):
     print filters
     p = dict(match_param_default_dict().items() + param_kw.items())
-    
+
     p['V-Imin'], p['V-Imax'], p['Vmin'], p['Vmax'], p['Imin'], p['Imax'] = \
         find_match_limits(mag1, mag2)
     p['V'] = filters[0]
@@ -229,15 +228,15 @@ def match_limits(mag1, mag2, color_only=False, comp1=99., comp2=99.):
     else:
         colmin, colmax, mag1max, mag2max = data
         data_str = '%.2f %.2f %.2f %.2f' % (colmin, colmax, mag1max, mag2max)
-    
+
     print data_str
 
 
 def make_phot(fitsfile, filters):
     assert len(filters) > 0, 'need filters'
-    
+
     tab = Table.read(fitsfile)
-    
+
     test = [f in tab.colnames for f in filters]
     if False in test:
         print(tab.colnames)
@@ -250,7 +249,7 @@ def make_phot(fitsfile, filters):
         np.savetxt(photname, np.column_stack((tab[filters[0]], tab[filters[1]])),
                    fmt='%.3f')
     return photname
-    
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find color mag limits of CMDs interactively")
@@ -266,7 +265,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-e', '--exgates', action='store_true',
                         help='Find exclude gates instead')
-     
+
     parser.add_argument('-t', '--extpgates', action='store_true',
                         help='Find exclude tp-agb instead')
 
@@ -279,9 +278,9 @@ if __name__ == "__main__":
     parser.add_argument('param', type=str, help='match param file')
 
     parser.add_argument('phot', type=str, help='match phot file or fits file')
-    
+
     args = parser.parse_args(sys.argv[1:])
-    
+
     if args.filters is not None:
         filters = args.filters.split(',')
         args.phot = make_phot(args.phot, filters)
@@ -290,17 +289,16 @@ if __name__ == "__main__":
     inds, = np.nonzero((np.abs(mag1) < args.slice) & (np.abs(mag2) < args.slice))
     mag1 = mag1[inds]
     mag2 = mag2[inds]
-                
+
     if args.exgates:
         find_gates(mag1, mag2, args.param)
-    
+
     if args.interactive:
         filters = args.filters.replace('_VEGA','').split(',')
         args.param = match_param(mag1, mag2, filters, args.phot)
-    
+
     if args.extpgates:
         filter1 = args.filters.replace('_VEGA','').split(',')[0]
         exclude_tpagb(args.phot, args.param, filter1=filter1, mtrgb=args.mtrgb)
-    
+
     match_diagnostic(args.param, args.phot)
-        

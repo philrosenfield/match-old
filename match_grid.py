@@ -1,19 +1,10 @@
-import numpy as np
 import os
-from ResolvedStellarPops import fileio
-from astroML.stats import binned_statistic_2d
-import matplotlib.pylab as plt
-from matplotlib import rc, rcParams
-from ResolvedStellarPops.match.utils import grab_val
-import re
 
-rcParams['text.usetex']=True
-rcParams['text.latex.unicode']=False
-rcParams['axes.linewidth'] = 2
-rcParams['ytick.labelsize'] = 'large'
-rcParams['xtick.labelsize'] = 'large'
-rcParams['axes.edgecolor'] = 'grey'
-rc('text', usetex=True)
+import matplotlib.pylab as plt
+import numpy as np
+
+from .utils import grab_val
+from .fileio import savetxt
 
 __all__ = ['MatchGrid']
 
@@ -90,9 +81,9 @@ class MatchGrid(object):
                 row += 1
 
     def write_grid(self, outfile, overwrite=True):
-        fileio.savetxt(outfile, self.data, fmt='%.3g',
-                       header='# %s\n' % ' '.join(self.data.dtype.names),
-                       overwrite=overwrite)
+        savetxt(outfile, self.data, fmt='%.3g',
+                header='# %s\n' % ' '.join(self.data.dtype.names),
+                overwrite=overwrite)
 
     def pdf_plots(self, xcol, ycol, zcol, stat='median', bins='uniq'):
         import matplotlib.gridspec as gridspec
@@ -128,6 +119,11 @@ class MatchGrid(object):
     def pdf_plot(self, xcol, ycol, zcol, stat='median', bins='uniq',
                  log=False, cbar=True, inds=None, ax=None, vmin=None,
                  vmax=None):
+        try:
+            from astroML.stats import binned_statistic_2d
+        except ImportError:
+            print('need astroML.stats.binned_statistic_2d for this function')
+            return -1
 
         if inds is None:
             inds = np.arange(len(self.data[xcol]))

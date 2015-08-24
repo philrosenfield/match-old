@@ -9,9 +9,8 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from matplotlib.offsetbox import AnchoredText
 from matplotlib.patheffects import withStroke
 
-from .utils import MatchSFH
-from ResolvedStellarPops.fileio.fileIO import get_files
-from ResolvedStellarPops.galaxies.asts import parse_pipeline
+from .utils import MatchSFH, parse_pipeline
+from .fileio import get_files
 
 __all__ = ['add_inner_title', 'forceAspect', 'match_plot', 'pgcmd', 'sfh_plot',
            'read_match_cmd', 'MatchCMD', 'match_diagnostic', 'call_pgcmd']
@@ -30,7 +29,7 @@ def match_diagnostic(param, phot):
 
     with open(param, 'r') as f:
         paramlines = f.readlines()
-    
+
     colmin, colmax = map(float, paramlines[4].split()[3: 5])
     mag1max, mag1min = map(float, paramlines[5].split()[0: 2])
     mag2max, mag2min = map(float, paramlines[6].split()[0: 2])
@@ -44,7 +43,7 @@ def match_diagnostic(param, phot):
     if nregions == 1:
         vs = np.array(paramlines[7].split()[1:-1], dtype=float)
         exgverts = np.append(vs, vs[:2]).reshape(5, 2)
-    
+
     verts = [np.array([[colmin, mag1min], [colmin, mag1max], [colmax, mag1max],
                        [colmax, mag1min], [colmin, mag1min]]),
              np.array([[colmin, mag2min], [colmin, mag2max], [colmax, mag2max],
@@ -55,7 +54,7 @@ def match_diagnostic(param, phot):
 
     fig, axs = plt.subplots(ncols=2, sharex=True, figsize=(12, 6))
 
-    for i, ymag in enumerate([mag1, mag2]):    
+    for i, ymag in enumerate([mag1, mag2]):
         axs[i].plot(color, ymag, '.')
         axs[i].plot(color[magcuts[i]], ymag[magcuts[i]], '.')
         axs[i].plot(verts[i][:, 0], verts[i][:, 1])
@@ -67,7 +66,7 @@ def match_diagnostic(param, phot):
         axs[0].plot(exgverts[:, 0] , exgverts[:, 1])
         # mag2 = mag1 - color
         axs[1].plot(exgverts[:, 0] , exgverts[:, 1] - exgverts[:, 0])
-    
+
     plt.savefig(param + '.png')
     print('wrote', param + '.png')
     plt.close()
@@ -110,7 +109,7 @@ def match_plot(ZS, extent, labels=["Data", "Model", "Diff", "Sig"],
                 'aspect': 'square'}
 
     imagegrid_kw = dict(defaults.items() + imagegrid_kw.items())
-    
+
     grid = ImageGrid(fig, 111, **imagegrid_kw)
 
     # scale color bar data and model the same
@@ -190,7 +189,7 @@ def pgcmd(filename=None, cmd=None, labels=None, figname=None, out_dir=None,
     else:
         hesses = cmd.hesses
         extent = cmd.extent
-        
+
     if axis_labels.lower() == 'default':
         if filter1 is None or filter2 is None:
             filter1 = ''

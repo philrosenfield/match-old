@@ -1,5 +1,5 @@
 """Utilities for running match"""
-from ..fileio import readfile
+from .fileio import readfile
 import numpy as np
 
 MAX_PROC = 8

@@ -3,7 +3,7 @@ import argparse
 import os
 import sys
 
-from ResolvedStellarPops.fileio.fileIO import get_files
+from .fileio import get_files
 from .graphics import call_pgcmd, match_diagnostic, sfh_plot
 from .utils import MatchSFH, check_boundaries
 
