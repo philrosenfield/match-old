@@ -9,8 +9,7 @@ import matplotlib.pyplot as plt
 
 logger = logging.getLogger()
 
-from .fileio import input_parameters
-from .utils import convertz
+from .fileio import InputParameters
 from astropy.table import Table
 #from .. import graphics
 
