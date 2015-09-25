@@ -227,6 +227,13 @@ def cheat_fake(infakefile, outfakefile):
     return
 
 
+def read_ssp_output(filename):
+    colnames = ['Av', 'IMF', 'dmod', 'lage', 'logZ', 'fit', 'sfr', 'sfrperr',
+                'sfrmerr']
+    data = np.genfromtxt(filename, skip_header=10, skip_footer=1, names=colnames)
+    return data.view(np.recarry)
+
+
 def read_binned_sfh(filename):
     '''
     reads the file created using zcombine or HybridMC from match
@@ -508,6 +515,33 @@ class MatchSFH(object):
 
         d['fmt'] = '%s \\\\ \n' % (' & '.join(line))
         return d
+
+    def mass_fraction(self, lagei, lagef):
+        if lagei > 1e6:
+            lagei = np.log10(lagei)
+            print('Warning: converting input age to log age')
+        if lagef > 1e6:
+            lagef = np.log10(lagef)
+            print('Warning: converting input age to log age')
+
+        # min age bin size
+        tol = np.min(np.diff(self.data.lagei))
+
+        agebins = (10 ** self.data.lagef - 10 ** self.data.lagei)
+        totalSF = np.sum(self.data.sfr * agebins)
+
+        idxi = np.argmin(np.abs(self.data.lagei - lagei))
+        difi = np.abs(self.data.lagei[idxi] - lagei)
+        if difi > tol:
+            print('Warning: input lagei={} not found. Using {}'.format(lagei, self.data.lagei[idxi]))
+
+        idxf = np.argmin(np.abs(self.data.lagef - lagef))
+        dif = np.abs(self.data.lagef[idxf] - lagef)
+        if dif > tol:
+            print('Warning: input lagef={} not found using {}'.format(lagef, self.data.lagef[idxf]))
+
+        fracsfr = np.sum(self.data.sfr[idxi:idxf + 1]  * agebins[idxi:idxf + 1])# +1 to include final bin
+        return fracsfr / self.totalSF
 
 def match_param_default_dict():
     ''' default params for match param file'''
